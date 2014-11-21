@@ -1,0 +1,16 @@
+<project name="MultipleEncryption" default="all" >
+
+	<target name="make.dirs" description="Make build dirs">
+		<mkdir dir="build"/>
+		<mkdir dir="build/class"/>
+	</target>
+
+	<target name="compile" description="compile java"  depends="make.dirs">	
+		<javac destdir="build/class">
+			<src path="src"/>
+		</javac>
+	</target>
+
+	<target name="all" description="Do the build"  depends="compile"/>
+
+</project>
