@@ -178,7 +178,7 @@ public class Main {
         byte[] key = genKey(3*AES_ORDINARY_KEY_LENGTH);
         byte[] iv = genKey(3*AES_ORDINARY_KEY_LENGTH);
         writeData(fileEOutName, tripleEncryptCBCInner(readData(fileInName), key, iv));
-        writeData(fileDOutName, tripleDecryptCBCInner(readData(fileEOutName), key, iv));
+        writeData(fileDOutName, tripleDecryptCBCInner(readData(fileEOutName), key, iv))
     }
 
 
