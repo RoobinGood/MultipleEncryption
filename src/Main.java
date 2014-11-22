@@ -4,7 +4,6 @@ import javax.crypto.spec.SecretKeySpec;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
-import java.lang.reflect.Method;
 import java.security.InvalidAlgorithmParameterException;
 import java.security.InvalidKeyException;
 import java.security.NoSuchAlgorithmException;
@@ -45,6 +44,20 @@ public class Main {
         System.out.println();
     }
 
+    public static byte[] arrCat(byte[] arr1, byte[] arr2) {
+        byte[] arr = new byte[arr1.length + arr2.length];
+        System.arraycopy(arr1, 0, arr, 0, arr1.length);
+        System.arraycopy(arr2, 0, arr, arr1.length, arr2.length);
+        return arr;
+    }
+
+    public static byte[] arrXor(byte[] dst, int offset, byte[] arr) {
+        for (int i=0; (i<arr.length) && (offset + i < dst.length); i++) {
+            dst[offset + i] ^= arr[i];
+        }
+        return dst;
+    }
+
     // ECB: E - D - E
     public static byte[] tripleEncryptECB(byte[] data, byte[] key1, byte[] key2, byte[] key3) throws NoSuchPaddingException, NoSuchAlgorithmException, BadPaddingException, IllegalBlockSizeException, InvalidKeyException {
         Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + CIPHER_PADDING);
@@ -82,7 +95,7 @@ public class Main {
                 Arrays.copyOfRange(key, 2 * AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH, 3 * AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH));
     }
 
-    public static byte[] genKey(int bitLength) throws NoSuchAlgorithmException {
+    public static byte[] genBytes(int bitLength) throws NoSuchAlgorithmException {
         SecureRandom secureRandom = SecureRandom.getInstance(SECURE_RANDOM_ALGORITHM);
         byte[] key = new byte[bitLength/BYTE_LENGTH];
         secureRandom.nextBytes(key);
@@ -90,20 +103,13 @@ public class Main {
     }
 
     public static void ecbTest(String fileInName, String fileEOutName, String fileDOutName) throws NoSuchAlgorithmException, IOException, InvalidKeyException, BadPaddingException, NoSuchPaddingException, IllegalBlockSizeException {
-        byte[] key = genKey(3*AES_ORDINARY_KEY_LENGTH);
+        byte[] key = genBytes(3 * AES_ORDINARY_KEY_LENGTH);
         writeData(fileEOutName, tripleEncryptECB(readData(fileInName), key));
         writeData(fileDOutName, tripleDecryptECB(readData(fileEOutName), key));
     }
 
 
     // CBC: inner
-    public static byte[] arrCat(byte[] arr1, byte[] arr2) {
-        byte[] arr = new byte[arr1.length + arr2.length];
-        System.arraycopy(arr1, 0, arr, 0, arr1.length);
-        System.arraycopy(arr2, 0, arr, arr1.length, arr2.length);
-        return arr;
-    }
-
     public static byte[] addPadding(byte[] data) {
         int blockNum = data.length/(AES_BLOCK_SIZE/BYTE_LENGTH);
         int length = ( (data.length%(AES_BLOCK_SIZE/BYTE_LENGTH) == 0) ? blockNum : blockNum+1 )*(AES_BLOCK_SIZE/BYTE_LENGTH);
@@ -181,8 +187,8 @@ public class Main {
         }
         cipher3.doFinal(data, (blockNum-1)*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
                 result, (blockNum-1)*(AES_BLOCK_SIZE/BYTE_LENGTH));
-        cipher2.doFinal(result, (blockNum - 1) * (AES_BLOCK_SIZE / BYTE_LENGTH), AES_BLOCK_SIZE / BYTE_LENGTH,
-                result, (blockNum - 1) * (AES_BLOCK_SIZE / BYTE_LENGTH));
+        cipher2.doFinal(result, (blockNum-1) * (AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                result, (blockNum-1) * (AES_BLOCK_SIZE / BYTE_LENGTH));
         cipher1.doFinal(result, (blockNum-1)*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
                 result, (blockNum-1)*(AES_BLOCK_SIZE/BYTE_LENGTH));
 
@@ -199,26 +205,112 @@ public class Main {
     }
 
     public static void cbcInnerTest(String fileInName, String fileEOutName, String fileDOutName) throws NoSuchAlgorithmException, IOException, InvalidKeyException, BadPaddingException, NoSuchPaddingException, IllegalBlockSizeException, ShortBufferException, InvalidAlgorithmParameterException {
-        byte[] key = genKey(3*AES_ORDINARY_KEY_LENGTH);
-        byte[] iv = genKey(3*AES_ORDINARY_KEY_LENGTH);
+        byte[] key = genBytes(3 * AES_ORDINARY_KEY_LENGTH);
+        byte[] iv = genBytes(3 * AES_ORDINARY_KEY_LENGTH);
         writeData(fileEOutName, tripleEncryptCBCInner(readData(fileInName), key, iv));
         writeData(fileDOutName, tripleDecryptCBCInner(readData(fileEOutName), key, iv));
     }
 
 
+    // CBC: outer
+    public static byte[] tripleEncryptCBCOuter(byte[] data, byte[] key1, byte[] key2, byte[] key3,
+                                               byte[] iv) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, InvalidAlgorithmParameterException, ShortBufferException, BadPaddingException, IllegalBlockSizeException {
+        int blockNum = data.length/(AES_BLOCK_SIZE/BYTE_LENGTH);
+        byte[] result = addPadding(data);
 
+        Cipher cipher1 = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + NO_PADDING);
+        cipher1.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key1, CIPHER_ALGORITHM));
+        Cipher cipher2 = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + NO_PADDING);
+        cipher2.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key2, CIPHER_ALGORITHM));
+        Cipher cipher3 = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + NO_PADDING);
+        cipher3.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key3, CIPHER_ALGORITHM));
 
-    public static long getTime(Method method) {
-        long t = System.currentTimeMillis();
-        //method;
-        return System.currentTimeMillis() - t;
+        byte[] currentIv = Arrays.copyOf(iv, iv.length);
+        for (int i=0; i<blockNum; i++) {
+            result = arrXor(result, i*(AES_BLOCK_SIZE/BYTE_LENGTH), currentIv);
+            cipher1.update(result, i*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                    result, i*(AES_BLOCK_SIZE/BYTE_LENGTH));
+            cipher2.update(result, i*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                    result, i*(AES_BLOCK_SIZE/BYTE_LENGTH));
+            cipher3.update(result, i*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                    result, i*(AES_BLOCK_SIZE/BYTE_LENGTH));
+            currentIv = Arrays.copyOfRange(result, i*(AES_BLOCK_SIZE/BYTE_LENGTH),
+                    (i + 1)*(AES_BLOCK_SIZE/BYTE_LENGTH));
+        }
+        result = arrXor(result, blockNum*(AES_BLOCK_SIZE/BYTE_LENGTH), currentIv);
+        cipher1.doFinal(result, blockNum*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                result, blockNum*(AES_BLOCK_SIZE/BYTE_LENGTH));
+        cipher2.doFinal(result, blockNum*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                result, blockNum*(AES_BLOCK_SIZE/BYTE_LENGTH));
+        cipher3.doFinal(result, blockNum*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                result, blockNum*(AES_BLOCK_SIZE/BYTE_LENGTH));
+
+        return result;
     }
+
+    public static byte[] tripleEncryptCBCOuter(byte[] data, byte[] key, byte[] iv) throws IllegalBlockSizeException, InvalidKeyException, BadPaddingException, NoSuchAlgorithmException, NoSuchPaddingException, ShortBufferException, InvalidAlgorithmParameterException {
+        return tripleEncryptCBCOuter(data, Arrays.copyOfRange(key, 0, AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH),
+                Arrays.copyOfRange(key, AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH, 2 * AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH),
+                Arrays.copyOfRange(key, 2 * AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH, 3 * AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH),
+                iv);
+    }
+
+    public static byte[] tripleDecryptCBCOuter(byte[] data, byte[] key1, byte[] key2, byte[] key3,
+                                               byte[] iv) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, InvalidAlgorithmParameterException, ShortBufferException, BadPaddingException, IllegalBlockSizeException {
+        int blockNum = data.length/(AES_BLOCK_SIZE/BYTE_LENGTH);
+        byte[] result = Arrays.copyOf(data, data.length);
+
+        Cipher cipher1 = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + NO_PADDING);
+        cipher1.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key1, CIPHER_ALGORITHM));
+        Cipher cipher2 = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + NO_PADDING);
+        cipher2.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key2, CIPHER_ALGORITHM));
+        Cipher cipher3 = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + NO_PADDING);
+        cipher3.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key3, CIPHER_ALGORITHM));
+
+        byte[] currentIv = Arrays.copyOf(iv, iv.length);
+        for (int i=0; i<blockNum-1; i++) {
+            byte[] nextIv = Arrays.copyOfRange(result, i*(AES_BLOCK_SIZE/BYTE_LENGTH),
+                    (i + 1)*(AES_BLOCK_SIZE/BYTE_LENGTH));
+            cipher3.update(result, i*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                    result, i*(AES_BLOCK_SIZE/BYTE_LENGTH));
+            cipher2.update(result, i*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                    result, i*(AES_BLOCK_SIZE/BYTE_LENGTH));
+            cipher1.update(result, i*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                    result, i*(AES_BLOCK_SIZE/BYTE_LENGTH));
+            result = arrXor(result, i*(AES_BLOCK_SIZE/BYTE_LENGTH), currentIv);
+            currentIv = Arrays.copyOf(nextIv, nextIv.length);
+        }
+        result = arrXor(result, blockNum*(AES_BLOCK_SIZE/BYTE_LENGTH), currentIv);
+        cipher3.doFinal(data, (blockNum-1)*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                result, (blockNum-1)*(AES_BLOCK_SIZE/BYTE_LENGTH));
+        cipher2.doFinal(result, (blockNum-1) * (AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                result, (blockNum-1) * (AES_BLOCK_SIZE/BYTE_LENGTH));
+        cipher1.doFinal(result, (blockNum-1)*(AES_BLOCK_SIZE/BYTE_LENGTH), AES_BLOCK_SIZE/BYTE_LENGTH,
+                result, (blockNum-1)*(AES_BLOCK_SIZE/BYTE_LENGTH));
+
+        return delPadding(result);
+    }
+
+    public static byte[] tripleDecryptCBCOuter(byte[] data, byte[] key, byte[] iv) throws IllegalBlockSizeException, InvalidKeyException, BadPaddingException, NoSuchAlgorithmException, NoSuchPaddingException, ShortBufferException, InvalidAlgorithmParameterException {
+        return tripleDecryptCBCOuter(data, Arrays.copyOfRange(key, 0, AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH),
+                Arrays.copyOfRange(key, AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH, 2 * AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH),
+                Arrays.copyOfRange(key, 2 * AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH, 3 * AES_ORDINARY_KEY_LENGTH/BYTE_LENGTH),
+                iv);
+    }
+
+    public static void cbcOuterTest(String fileInName, String fileEOutName, String fileDOutName) throws NoSuchAlgorithmException, IOException, InvalidKeyException, BadPaddingException, NoSuchPaddingException, IllegalBlockSizeException, ShortBufferException, InvalidAlgorithmParameterException {
+        byte[] key = genBytes(3 * AES_ORDINARY_KEY_LENGTH);
+        byte[] iv = genBytes(AES_BLOCK_SIZE);
+        writeData(fileEOutName, tripleEncryptCBCOuter(readData(fileInName), key, iv));
+        writeData(fileDOutName, tripleDecryptCBCOuter(readData(fileEOutName), key, iv));
+    }
+
 
     public static void main(String[] args) throws NoSuchAlgorithmException, IOException, InvalidKeyException, BadPaddingException, NoSuchPaddingException, IllegalBlockSizeException, ShortBufferException, InvalidAlgorithmParameterException {
         String fileInName = "test\\test1.jpg";
         String fileEOutName = "test\\testE.jpg";
         String fileDOutName = "test\\testD.jpg";
 
-        cbcInnerTest(fileInName, fileEOutName, fileDOutName);
+        cbcOuterTest(fileInName, fileEOutName, fileDOutName);
     }
 }
