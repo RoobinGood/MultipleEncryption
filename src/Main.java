@@ -35,16 +35,6 @@ public class Main {
         fileOutputStream.write(data);
     }
 
-    public static void printBytes(byte[] x) {
-        for (byte b: x) {
-            String t = Integer.toHexString(b & 0xFF);
-            while (t.length()<2)
-                t = '0' + t;
-            System.out.print(t);
-        }
-        System.out.println();
-    }
-
     public static byte[] arrCat(byte[] arr1, byte[] arr2) {
         byte[] arr = new byte[arr1.length + arr2.length];
         System.arraycopy(arr1, 0, arr, 0, arr1.length);
@@ -61,10 +51,9 @@ public class Main {
 
     // ECB: E - D - E
     public static byte[] tripleEncryptECB(byte[] data, byte[] key1, byte[] key2, byte[] key3) throws NoSuchPaddingException, NoSuchAlgorithmException, BadPaddingException, IllegalBlockSizeException, InvalidKeyException {
-        Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + CIPHER_PADDING);
+        Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + NO_PADDING);
         cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key1, CIPHER_ALGORITHM));
-        byte[] result = cipher.doFinal(data);
-        cipher = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + NO_PADDING);
+        byte[] result = cipher.doFinal(addPadding(data));
         cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key2, CIPHER_ALGORITHM));
         result = cipher.doFinal(result);
         cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key3, CIPHER_ALGORITHM));
@@ -84,10 +73,9 @@ public class Main {
         byte[] result = cipher.doFinal(data);
         cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key2, CIPHER_ALGORITHM));
         result = cipher.doFinal(result);
-        cipher = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + CIPHER_PADDING);
         cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key1, CIPHER_ALGORITHM));
         result = cipher.doFinal(result);
-        return result;
+        return delPadding(result);
     }
 
     public static byte[] tripleDecryptECB(byte[] data, byte[] key) throws IllegalBlockSizeException, InvalidKeyException, BadPaddingException, NoSuchAlgorithmException, NoSuchPaddingException {
@@ -307,28 +295,53 @@ public class Main {
     }
 
 
-    // With Filling
-    public static byte[] tripleEncryptWithPad(byte[] data, byte[] key1, byte[] key2, byte[] key3) {
-        return new byte[0];
+    // With pad
+    public static byte[] addPad(byte[] data) throws NoSuchAlgorithmException {
+        SecureRandom secureRandom = SecureRandom.getInstance(SECURE_RANDOM_ALGORITHM);
+        byte[] pad = new byte[AES_BLOCK_SIZE/BYTE_LENGTH / 2];
+        secureRandom.nextBytes(pad);
+        return arrCat(pad, data);
     }
 
-    public static byte[] tripleEncryptWithPad(byte[] data, byte[] key) {
+    public static byte[] delPad(byte[] data) {
+        return Arrays.copyOfRange(data, AES_BLOCK_SIZE/BYTE_LENGTH / 2, data.length);
+    }
+
+    public static byte[] tripleEncryptWithPad(byte[] data, byte[] key1, byte[] key2, byte[] key3) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
+        Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + CIPHER_PADDING);
+        cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key1, CIPHER_ALGORITHM));
+        byte[] result = cipher.doFinal(data);
+        cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key2, CIPHER_ALGORITHM));
+        result = cipher.doFinal(addPad(result));
+        cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key3, CIPHER_ALGORITHM));
+        result = cipher.doFinal(addPad(result));
+        return result;
+    }
+
+    public static byte[] tripleEncryptWithPad(byte[] data, byte[] key) throws IllegalBlockSizeException, InvalidKeyException, BadPaddingException, NoSuchAlgorithmException, NoSuchPaddingException {
         return tripleEncryptWithPad(data, Arrays.copyOfRange(key, 0, AES_ORDINARY_KEY_LENGTH / BYTE_LENGTH),
                 Arrays.copyOfRange(key, AES_ORDINARY_KEY_LENGTH / BYTE_LENGTH, 2 * AES_ORDINARY_KEY_LENGTH / BYTE_LENGTH),
                 Arrays.copyOfRange(key, 2 * AES_ORDINARY_KEY_LENGTH / BYTE_LENGTH, 3 * AES_ORDINARY_KEY_LENGTH / BYTE_LENGTH));
     }
 
-    public static byte[] tripleDecryptWithPad(byte[] data, byte[] key1, byte[] key2, byte[] key3) {
-        return new byte[0];
+    public static byte[] tripleDecryptWithPad(byte[] data, byte[] key1, byte[] key2, byte[] key3) throws NoSuchPaddingException, NoSuchAlgorithmException, InvalidKeyException, BadPaddingException, IllegalBlockSizeException {
+        Cipher cipher = Cipher.getInstance(CIPHER_ALGORITHM + "/" + ECB_CHAIN_MODE + "/" + CIPHER_PADDING);
+        cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key3, CIPHER_ALGORITHM));
+        byte[] result = cipher.doFinal(data);
+        cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key2, CIPHER_ALGORITHM));
+        result = cipher.doFinal(delPad(result));
+        cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(key1, CIPHER_ALGORITHM));
+        result = cipher.doFinal(delPad(result));
+        return result;
     }
 
-    public static byte[] tripleDecryptWithPad(byte[] data, byte[] key) {
+    public static byte[] tripleDecryptWithPad(byte[] data, byte[] key) throws IllegalBlockSizeException, InvalidKeyException, BadPaddingException, NoSuchAlgorithmException, NoSuchPaddingException {
         return tripleDecryptWithPad(data, Arrays.copyOfRange(key, 0, AES_ORDINARY_KEY_LENGTH / BYTE_LENGTH),
                 Arrays.copyOfRange(key, AES_ORDINARY_KEY_LENGTH / BYTE_LENGTH, 2 * AES_ORDINARY_KEY_LENGTH / BYTE_LENGTH),
                 Arrays.copyOfRange(key, 2 * AES_ORDINARY_KEY_LENGTH / BYTE_LENGTH, 3 * AES_ORDINARY_KEY_LENGTH / BYTE_LENGTH));
     }
 
-    public static void withFillingTest(String fileInName, String fileEOutName, String fileDOutName) throws NoSuchAlgorithmException, IOException, InvalidKeyException, BadPaddingException, NoSuchPaddingException, IllegalBlockSizeException, ShortBufferException, InvalidAlgorithmParameterException {
+    public static void withPadTest(String fileInName, String fileEOutName, String fileDOutName) throws NoSuchAlgorithmException, IOException, InvalidKeyException, BadPaddingException, NoSuchPaddingException, IllegalBlockSizeException, ShortBufferException, InvalidAlgorithmParameterException {
         byte[] key = genBytes(3 * AES_ORDINARY_KEY_LENGTH);
         writeData(fileEOutName, tripleEncryptWithPad(readData(fileInName), key));
         writeData(fileDOutName, tripleDecryptWithPad(readData(fileEOutName), key));
@@ -342,6 +355,9 @@ public class Main {
         byte[] key = genBytes(3 * AES_ORDINARY_KEY_LENGTH);
         byte[] iv3 = genBytes(3*AES_BLOCK_SIZE);
         byte[] iv1 = Arrays.copyOf(iv3, AES_IV_SIZE/BYTE_LENGTH);
+
+        // may be for init libs...
+        tripleEncryptECB(data, key);
 
         long t = System.currentTimeMillis();
         tripleEncryptECB(data, key);
@@ -359,6 +375,7 @@ public class Main {
         tripleEncryptWithPad(data, key);
         long padEncryptionTime = System.currentTimeMillis() - t;
 
+        System.out.println("Encryption");
         System.out.println("ECB:       " + ECBEncryptionTime + " ms.");
         System.out.println("Inner CBC: " + innerCBCEncryptionTime + " ms.");
         System.out.println("Outer CBC: " + outerCBCEncryptionTime + " ms.");
@@ -391,6 +408,7 @@ public class Main {
         tripleDecryptWithPad(encryptedData, key);
         long padEncryptionTime = System.currentTimeMillis() - t;
 
+        System.out.println("Decryption");
         System.out.println("ECB:       " + ECBEncryptionTime + " ms.");
         System.out.println("Inner CBC: " + innerCBCEncryptionTime + " ms.");
         System.out.println("Outer CBC: " + outerCBCEncryptionTime + " ms.");
@@ -403,7 +421,10 @@ public class Main {
         String fileEOutName = "test\\testE.jpg";
         String fileDOutName = "test\\testD.jpg";
 
+        //ecbTest(fileInName, fileEOutName, fileDOutName);
+        //cbcInnerTest(fileInName, fileEOutName, fileDOutName);
         //cbcOuterTest(fileInName, fileEOutName, fileDOutName);
+        //withPadTest(fileInName, fileEOutName, fileDOutName);
         timeTestEncryption(fileInName);
         timeTestDecryption(fileInName);
     }
